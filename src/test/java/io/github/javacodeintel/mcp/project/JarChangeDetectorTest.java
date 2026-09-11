@@ -16,7 +16,7 @@ class JarChangeDetectorTest {
         JarChangeDetector.Snapshot snapshot = detector.snapshot(jar, ChangeDetectionMode.METADATA);
         assertThat(detector.detect(jar, ChangeDetectionMode.NONE, snapshot).changed()).isFalse();
         assertThat(detector.detect(jar, ChangeDetectionMode.METADATA, snapshot).changed()).isFalse();
-        Files.writeString(jar, "two");
+        Files.writeString(jar, "two-two");
         assertThat(detector.detect(jar, ChangeDetectionMode.METADATA, snapshot).changed()).isTrue();
         JarChangeDetector.Snapshot digest = detector.snapshot(jar, ChangeDetectionMode.SHA256);
         assertThat(detector.detect(jar, ChangeDetectionMode.SHA256, digest).changed()).isFalse();
