@@ -47,6 +47,9 @@ public final class SqliteIndexStore implements IndexStore {
         } catch (SQLException e) { throw sql("Failed to check jar", e); }
     }
 
+    @Override public synchronized Optional<JarIndexState> findJarState(JarArtifact jar) throws IOException { try(PreparedStatement ps=connection.prepareStatement("SELECT path,file_size,last_modified,sha256,change_detection_mode FROM jars WHERE path=?")){ps.setString(1,jar.path().toAbsolutePath().toString());try(ResultSet rs=ps.executeQuery()){if(!rs.next())return Optional.empty();String mode=rs.getString("change_detection_mode");return Optional.of(new JarIndexState(Path.of(rs.getString("path")),rs.getLong("file_size"),rs.getLong("last_modified"),rs.getString("sha256"),ChangeDetectionMode.valueOf(mode)));}}catch(SQLException e){throw sql("Failed to query jar state",e);}}
+    @Override public synchronized void saveJarState(JarArtifact jar,JarIndexState state) throws IOException {try(PreparedStatement ps=connection.prepareStatement("UPDATE jars SET file_size=?,last_modified=?,sha256=?,change_detection_mode=? WHERE path=?")){ps.setLong(1,state.size());ps.setLong(2,state.lastModified());setNullable(ps,3,state.sha256(),Types.VARCHAR);ps.setString(4,state.mode().name());ps.setString(5,jar.path().toAbsolutePath().toString());ps.executeUpdate();}catch(SQLException e){throw sql("Failed to save jar state",e);}}
+
     @Override
     public synchronized void replaceJarIndex(JarArtifact jar, List<ParsedClass> parsed) throws IOException {
         Objects.requireNonNull(jar, "jar");
@@ -70,6 +73,7 @@ public final class SqliteIndexStore implements IndexStore {
                 ps.setString(1, jar.path().toAbsolutePath().toString());
                 try (ResultSet rs = ps.executeQuery()) { if (!rs.next()) throw new SQLException("jar row was not created"); jarId = rs.getLong(1); }
             }
+            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM annotations WHERE (target_kind='class' AND target_id IN (SELECT id FROM classes WHERE jar_id=?)) OR (target_kind='field' AND target_id IN (SELECT f.id FROM fields f JOIN classes c ON c.id=f.class_id WHERE c.jar_id=?)) OR (target_kind='method' AND target_id IN (SELECT m.id FROM methods m JOIN classes c ON c.id=m.class_id WHERE c.jar_id=?))")) { ps.setLong(1, jarId); ps.setLong(2, jarId); ps.setLong(3, jarId); ps.executeUpdate(); }
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM classes WHERE jar_id=?")) { ps.setLong(1, jarId); ps.executeUpdate(); }
             Map<String, Long> methodIds = new HashMap<>();
             Map<String, Long> classIds = new HashMap<>();

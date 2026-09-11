@@ -27,10 +27,10 @@ class AsmBytecodeParserTest {
 
         assertThat(parsed.classInfo().name()).isEqualTo("demo.OrderDTO");
         assertThat(parsed.classInfo().classFileJavaRelease()).isEqualTo(8);
-        assertThat(parsed.classInfo().interfaces()).containsExactly("demo/Port");
+        assertThat(parsed.classInfo().interfaces()).containsExactly("demo.Port");
         assertThat(parsed.classInfo().annotations()).extracting(AnnotationInfo::type).contains("demo.Marker");
         assertThat(parsed.fields()).anyMatch(field -> field.name().equals("id") && field.type().equals("java.lang.Long"));
         assertThat(parsed.methods()).extracting(MethodInfo::name).contains("getId", "send");
-        assertThat(parsed.callEdges()).anyMatch(edge -> edge.targetOwner().equals("java/lang/String") && edge.targetName().equals("toString"));
+        assertThat(parsed.callEdges()).anyMatch(edge -> edge.targetOwner().equals("java.lang.String") && edge.targetName().equals("toString"));
     }
 }

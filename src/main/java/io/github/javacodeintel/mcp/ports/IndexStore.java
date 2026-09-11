@@ -8,6 +8,8 @@ import java.util.Optional;
 public interface IndexStore extends AutoCloseable {
     void initialize() throws IOException;
     boolean containsJar(JarArtifact jar) throws IOException;
+    default Optional<JarIndexState> findJarState(JarArtifact jar) throws IOException { return Optional.empty(); }
+    default void saveJarState(JarArtifact jar, JarIndexState state) throws IOException { }
     void replaceJarIndex(JarArtifact jar, List<ParsedClass> classes) throws IOException;
     void removeJar(JarArtifact jar) throws IOException;
     List<ClassInfo> searchClasses(String query, String packagePrefix, String kind, int limit, int offset) throws IOException;
