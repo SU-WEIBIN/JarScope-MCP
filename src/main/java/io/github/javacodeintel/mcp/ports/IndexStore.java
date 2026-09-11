@@ -20,6 +20,7 @@ public interface IndexStore extends AutoCloseable {
     List<ClassInfo> findSubtypes(String typeName, boolean recursive, boolean includeInterfaces, int limit, int offset) throws IOException;
     long countSubtypes(String typeName, boolean recursive, boolean includeInterfaces) throws IOException;
     List<CallEdge> findCallers(String owner, String name, String descriptor, boolean includePolymorphic, int limit, int offset) throws IOException;
+    default List<CallEdge> findCallees(String owner, String name, String descriptor) throws IOException { return List.of(); }
     long countCallers(String owner, String name, String descriptor, boolean includePolymorphic) throws IOException;
     Optional<DecompiledSource> findDecompiled(DecompileCacheKey key) throws IOException;
     void saveDecompiled(DecompileCacheKey key, DecompiledSource source) throws IOException;
