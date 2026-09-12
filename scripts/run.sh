@@ -6,6 +6,8 @@ if [ -z "${JAVA_HOME:-}" ]; then
   exit 2
 fi
 
-JAR="${1:-$(dirname "$0")/../target/java-code-intelligence-mcp-0.1.0-SNAPSHOT.jar}"
+DEFAULT_JAR="$(dirname "$0")/../java-code-intelligence-mcp.jar"
+if [ ! -f "$DEFAULT_JAR" ]; then DEFAULT_JAR="$(dirname "$0")/../target/java-code-intelligence-mcp-0.1.0-SNAPSHOT.jar"; fi
+JAR="${1:-$DEFAULT_JAR}"
 if [ "$#" -gt 0 ]; then shift; fi
 exec "$JAVA_HOME/bin/java" -jar "$JAR" "$@"

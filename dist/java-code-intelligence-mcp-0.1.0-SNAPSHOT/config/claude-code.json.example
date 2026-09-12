@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "java-code-intelligence": {
+      "command": "java",
+      "args": [
+        "-Djci.maven.command=/path/to/maven/bin/mvn",
+        "-Djci.maven.timeoutSeconds=180",
+        "-jar",
+        "/path/to/java-code-intelligence-mcp/java-code-intelligence-mcp.jar"
+      ]
+    }
+  }
+}

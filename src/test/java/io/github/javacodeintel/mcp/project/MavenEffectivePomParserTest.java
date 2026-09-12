@@ -57,6 +57,23 @@ class MavenEffectivePomParserTest {
         assertThat(childModel.dependencies().get(1).optional()).isTrue();
     }
 
+    @Test
+    void fallsBackWhenEffectivePomContainsMalformedUncDirectory() throws Exception {
+        Path root = Files.createTempDirectory("effective-unc-").toAbsolutePath();
+        Path rootPom = root.resolve("pom.xml");
+        Files.writeString(rootPom, "<project/>");
+        String xml = """
+                <projects><project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <groupId>demo</groupId><artifactId>broken</artifactId><version>1</version>
+                  <build><sourceDirectory>//120.46.143.122</sourceDirectory></build>
+                </project></projects>
+                """;
+
+        MavenModuleModel module = new MavenEffectivePomParser().parse(xml, rootPom, List.of()).modules().get(0);
+
+        assertThat(module.sourceDirectory()).isEqualTo(root.resolve("src/main/java"));
+    }
+
     private static String xml(Path path) {
         return path.toString().replace("&", "&amp;");
     }

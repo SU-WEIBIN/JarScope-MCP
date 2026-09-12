@@ -34,7 +34,7 @@ public final class ToolSchemas {
                 "limit", integer(), "offset", integer())));
         result.add(tool("decompile_class", List.of("projectPath", "className"), Map.of(
                 "projectPath", string(), "className", string(), "targetJavaRelease", integer(),
-                "force", bool(), "includeMetadata", bool())));
+                "force", bool(), "includeMetadata", bool(), "includeSource", bool())));
         return List.copyOf(result);
     }
     private static McpSchema.Tool tool(String name,List<String> required,Map<String,Object> properties){Map<String,Object> schema=new LinkedHashMap<>();schema.put("type","object");schema.put("properties",properties);schema.put("required",required);schema.put("additionalProperties",false);return McpSchema.Tool.builder(name).description("Java code intelligence: "+name).inputSchema(schema).build();}
@@ -42,3 +42,4 @@ public final class ToolSchemas {
     private static Map<String,Object> integer(){return Map.of("type","integer");}
     private static Map<String,Object> bool(){return Map.of("type","boolean");}
 }
+

@@ -1,5 +1,5 @@
 param(
-    [string]$Jar = "$PSScriptRoot\..\target\java-code-intelligence-mcp-0.1.0-SNAPSHOT.jar"
+    [string]$Jar = $(if (Test-Path -LiteralPath "$PSScriptRoot\..\java-code-intelligence-mcp.jar") { "$PSScriptRoot\..\java-code-intelligence-mcp.jar" } else { "$PSScriptRoot\..\target\java-code-intelligence-mcp-0.1.0-SNAPSHOT.jar" })
 )
 
 if (-not $env:JAVA_HOME) {

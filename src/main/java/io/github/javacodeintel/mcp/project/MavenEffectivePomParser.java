@@ -229,8 +229,15 @@ public final class MavenEffectivePomParser {
 
     private static Path resolve(Path base, String value, String fallback) {
         String selected = value == null || value.isBlank() ? fallback : value.trim();
-        Path path = Path.of(selected);
-        return (path.isAbsolute() ? path : base.resolve(path)).toAbsolutePath().normalize();
+        try {
+            Path path = Path.of(selected);
+            return (path.isAbsolute() ? path : base.resolve(path)).toAbsolutePath().normalize();
+        } catch (RuntimeException ignored) {
+            // Some effective POMs contain malformed network paths such as
+            // //host-without-share. Ignore that entry and retain Maven's
+            // conventional directory relative to the module.
+            return base.resolve(fallback).toAbsolutePath().normalize();
+        }
     }
 
     private static List<Element> projectElements(Element root) {

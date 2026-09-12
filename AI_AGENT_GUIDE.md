@@ -359,7 +359,8 @@ Getter/Setter 是静态命名约定推断，不代表运行时一定被调用。
 
 `exact` 只匹配明确的目标 owner；`polymorphic` 会结合继承关系返回可能的多态候选。结果是静态字节码近似，不覆盖反射、Spring AOP、动态代理和运行时配置。
 
-### 3.9 `decompile_class`
+### 3.9 decompile_class\r\n\r\ndecompile_class 会生成反编译 Java 文件，并返回 sourcePath。默认不返回完整源码文本，Agent 应按需读取该路径；传入 includeSource=true 才返回 source。反编译同一 JAR 时，服务会同时提取 XML、SQL、YAML、properties、JSON 等文本资源，并在 esources 字段返回文件路径。MyBatis XML 会尽量返回 
+amespace，但不建立方法级关系。Agent 不应为读取这些资源自行解压 JAR。\r\n
 
 将已索引 JAR 中的 class 按需反编译为 Java 源码，并把结果写入持久化缓存。
 
