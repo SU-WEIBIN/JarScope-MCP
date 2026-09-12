@@ -4,9 +4,11 @@
 
 本文档统一承载项目概要、技术决策、架构设计、实施计划和第一阶段验收标准。
 
-项目当前处于设计和实施准备阶段，当前目录原本为空，后续将从零建立 Java 21 Maven 项目。
+项目已完成基础工程和第一阶段核心链路的实现；本文档同时保留后续增强项。服务运行在 JDK 21，被分析项目默认按 Java 8 目标版本处理。
 
 MCP 工具调用约定见 [MCP_API.md](./MCP_API.md)。
+
+AI Agent 的实际配置和调用顺序见 [AI_AGENT_GUIDE.md](./AI_AGENT_GUIDE.md)。
 
 ## 2. 项目定位
 
@@ -49,7 +51,7 @@ enforceTargetRelease: false
 
 它影响多版本 JAR 选择、反编译时的类路径上下文和兼容性提示。
 
-服务运行在 JDK 21，可以读取 Java 8 字节码。默认不因为发现高版本 class 而停止；高版本 class 会记录实际 class file 版本。开启 `enforceTargetRelease=true` 后，超出目标版本的 class 会被跳过并记录错误。
+服务运行在 JDK 21，可以读取 Java 8 字节码。默认不因为发现高版本 class 而停止；高版本 class 会记录实际 class file 版本。开启 `enforceTargetRelease=true` 后，超出目标版本的 class 会被跳过，并在 `diagnostics` 中记录 `CLASS_VERSION_EXCLUDED` warning。
 
 多版本 JAR 默认选择不高于 `targetJavaRelease` 的版本：
 
@@ -63,21 +65,21 @@ targetJavaRelease=17 -> META-INF/versions/17 下的 class（如果存在）
 JAR 内容哈希不是必需能力，默认不计算 SHA-256。
 
 ```text
-none      默认，不计算哈希；只有 force=true 才重新索引
-metadata  使用路径、文件名、大小、修改时间等轻量信息
-sha256    计算完整内容哈希
+NONE      默认，不计算哈希；只有 force=true 才重新索引
+METADATA  使用路径、文件名、大小、修改时间等轻量信息
+SHA256    计算完整内容哈希
 ```
 
-默认使用 `changeDetection=none`。依赖发生变化时由用户显式调用：
+默认使用 `changeDetection=NONE`。依赖发生变化时由用户显式调用：
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "force": true
 }
 ```
 
-只有 `changeDetection=sha256` 时才计算和保存 sha256 字段。
+只有 `changeDetection=SHA256` 时才计算和保存 sha256 字段。
 
 ## 4. 可行性结论
 
@@ -111,6 +113,8 @@ ASM 可以准确提取 class 结构和直接字节码调用指令，但无法仅
 
 没有发现一个成熟项目同时覆盖 Maven 依赖发现、持久化语义索引、继承和反向调用关系、按需反编译缓存以及面向 AI 的 Java MCP 查询。因此本项目采用组合式实现，而不是整体 fork 某个项目。
 
+项目导入方式参考了 [IntelliJ IDEA 的 Maven 导入](https://www.jetbrains.com/help/idea/maven-importing.html)、[Eclipse JDTLS 的 MavenProjectImporter](https://raw.githubusercontent.com/eclipse-jdtls/eclipse.jdt.ls/main/org.eclipse.jdt.ls.core/src/org/eclipse/jdt/ls/core/internal/managers/MavenProjectImporter.java) 和 [m2e 的 workspace artifact 解析](https://eclipse.dev/m2e/documentation/m2e-faq.html) 的共同原则：先建立项目/模块/源码根目录/库的模型，再执行索引；导入模型不等同于运行 Maven 生命周期。当前实现采用 Maven 自己生成的 effective POM 保证 parent、profile、BOM 和属性插值与用户环境一致，再用临时 probe POM 解析外部依赖；第一阶段不复制 JDT 的源码 AST 索引。
+
 ## 6. 总体架构
 
 ```text
@@ -120,7 +124,8 @@ Claude Code
 MCP Server
     |
     +-- Project Manager
-    |     +-- Maven 项目发现
+    |     +-- Maven effective POM / Reactor 模型
+    |     +-- workspace Module 与外部依赖解析
     |     +-- 变化检测和增量索引
     |
     +-- Bytecode Indexer
@@ -225,8 +230,10 @@ UNRESOLVED
 ```text
 接收 projectPath
   -> 定位根 pom.xml
-  -> 发现 Maven Module
-  -> 获取 runtime 依赖 JAR
+  -> 递归发现 Maven Module
+  -> 读取 effective POM（只读模型命令）
+  -> 为各 Module 生成外部依赖 probe POM
+  -> 获取第三方 runtime 依赖 JAR
   -> 根据 changeDetection 判断是否扫描
   -> ASM 解析 class
   -> 事务写入 SQLite
@@ -235,7 +242,7 @@ UNRESOLVED
 
 ### 9.2 后续打开
 
-`changeDetection=none` 时：
+`changeDetection=NONE` 时：
 
 ```text
 打开项目
@@ -244,7 +251,7 @@ UNRESOLVED
   -> 直接允许查询
 ```
 
-依赖变化后使用 `force=true` 主动重建。单个损坏 class、无法识别的 class 或反编译失败不应中断整个项目索引，错误写入 `index_errors` 后继续处理。
+依赖变化后使用 `force=true` 主动重建。单个损坏 class 或无法识别的 class 不应中断整个项目索引，扫描诊断会随 `index_project` 结果返回；反编译失败只影响当前 `decompile_class` 请求。
 
 ## 10. MCP 工具
 
@@ -264,9 +271,9 @@ decompile_class
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "force": false,
-  "changeDetection": "none",
+  "changeDetection": "NONE",
   "targetJavaRelease": 8,
   "includeTestDependencies": false
 }
@@ -325,12 +332,14 @@ decompiler_version
 ### 阶段 2：Maven 依赖发现
 
 - 根 POM 定位；
-- 多 Module 识别；
+- 递归多 Module / Reactor 识别；
+- `help:effective-pom` 模型导入；
+- 移除 workspace 依赖的 external-only probe；
 - runtime 依赖发现；
 - 本地 Maven 环境和自定义 settings 支持；
 - `DependencyProvider` 接口。
 
-第一版优先复用本地 Maven 的依赖解析行为，避免自行重写 profile、父 POM 和依赖冲突规则。后续再接入 Maven Resolver 实现独立解析。
+第一版已优先复用本地 Maven 的模型和依赖解析行为，避免自行重写 profile、父 POM 和依赖冲突规则。有效 POM 与 probe 文件只在单次索引期间写入系统临时目录，不要求目标项目先执行 `compile/package/install`，也不把内部 Module JAR 注册到本地仓库。后续可接入 Maven Resolver `WorkspaceReader`，进一步减少外部 Maven 进程依赖。
 
 ### 阶段 3：ASM 索引器
 
@@ -431,16 +440,17 @@ UserEntity
 
 1. 能扫描 Maven 多 Module 项目。
 2. 能发现 runtime 依赖 JAR。
-3. 能保存类、接口、枚举、字段、方法和注解。
-4. 能查询父类、实现接口和所有子类。
-5. 能查询直接字节码调用方。
-6. 能区分方法重载。
-7. 能按需反编译指定类并持久化复用。
-8. 默认不计算 JAR SHA-256。
-9. `metadata` 和 `sha256` 检测模式可选启用。
-10. `force=true` 可以强制重建。
-11. 默认目标 Java 版本为 8，并支持切换到 11、17、21 等版本。
-12. Claude Code 可以通过 stdio 调用 MCP 工具。
+3. 多 Module 项目不要求预先执行 `compile`、`package` 或 `install`；内部 workspace 依赖不会阻塞第三方 JAR 解析。
+4. 能保存类、接口、枚举、字段、方法和注解。
+5. 能查询父类、实现接口和所有子类。
+6. 能查询直接字节码调用方。
+7. 能区分方法重载。
+8. 能按需反编译指定类并持久化复用。
+9. 默认不计算 JAR SHA-256。
+10. `METADATA` 和 `SHA256` 检测模式可选启用。
+11. `force=true` 可以强制重建。
+12. 默认目标 Java 版本为 8，并支持切换到 11、17、21 等版本。
+13. Claude Code 可以通过 stdio 调用 MCP 工具。
 
 ### 正确性
 

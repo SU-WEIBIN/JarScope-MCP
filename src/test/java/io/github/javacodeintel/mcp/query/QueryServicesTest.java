@@ -15,7 +15,7 @@ class QueryServicesTest {
     @Test
     void appliesPagingAndDoesNotGuessAmbiguousSimpleNames() throws Exception {
         Path db=Files.createTempFile("jci-query-", ".db");
-        JarArtifact jar=new JarArtifact(Path.of("E:/m2/demo.jar"),new MavenCoordinate("demo","demo","1"));
+        JarArtifact jar=new JarArtifact(Path.of("/path/m2/demo.jar"),new MavenCoordinate("demo","demo","1"));
         ClassInfo one=new ClassInfo("a.OrderDTO","a/OrderDTO","a","class",1,"java.lang.Object",List.of(),null,null,52,jar);
         ClassInfo two=new ClassInfo("b.OrderDTO","b/OrderDTO","b","class",1,"java.lang.Object",List.of(),null,null,52,jar);
         try(SqliteIndexStore store=SqliteIndexStore.open(db)){

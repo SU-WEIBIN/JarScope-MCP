@@ -25,7 +25,7 @@ class SqliteIndexStoreTest {
     void persistsClassMembersCallsAndDecompiledSourceAcrossReopen() throws Exception {
         Path database = Files.createTempFile("jci-index-", ".db");
         JarArtifact jar = new JarArtifact(
-                Path.of("E:/m2/com/example/order-api/1.0/order-api-1.0.jar"),
+                Path.of("/path/m2/com/example/order-api/1.0/order-api-1.0.jar"),
                 new MavenCoordinate("com.example", "order-api", "1.0"));
         ClassInfo classInfo = new ClassInfo(
                 "com.example.OrderDTO", "com/example/OrderDTO", "com.example", "class",
@@ -36,7 +36,7 @@ class SqliteIndexStoreTest {
                 List.of(new AnnotationInfo("com.example.Id", Map.of("value", "id"))));
         MethodInfo method = new MethodInfo(
                 classInfo.name(), "getId", "()Ljava/lang/Long;", "java.lang.Long",
-                List.of(), List.of(), 1, null, List.of());
+                List.of(), List.of("java.io.IOException", "java.io.IOException"), 1, null, List.of());
         CallEdge edge = new CallEdge(
                 classInfo.name(), "getId", "()Ljava/lang/Long;",
                 "java.lang.Object", "toString", "()Ljava/lang/String;",
@@ -53,6 +53,9 @@ class SqliteIndexStoreTest {
                     .extracting(FieldInfo::type).isEqualTo("java.lang.Long");
             assertThat(store.findMethods(classInfo.name(), "getId", "()Ljava/lang/Long;")).singleElement()
                     .extracting(MethodInfo::returnType).isEqualTo("java.lang.Long");
+            assertThat(store.findMethods(classInfo.name(), "getId", "()Ljava/lang/Long;")).singleElement()
+                    .extracting(MethodInfo::exceptions)
+                    .isEqualTo(List.of("java.io.IOException"));
             assertThat(store.findCallers("java.lang.Object", "toString", "()Ljava/lang/String;", false, 10, 0))
                     .singleElement().extracting(CallEdge::callerOwner).isEqualTo(classInfo.name());
 

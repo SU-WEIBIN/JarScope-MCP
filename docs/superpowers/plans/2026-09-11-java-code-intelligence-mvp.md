@@ -114,7 +114,7 @@ void defaultsTargetJavaEightWithoutJarHashing() {
 Run:
 
 ```powershell
-$env:JAVA_HOME='E:\A\jdk-jre\jdk21'
+$env:JAVA_HOME='/path/jdk-21'
 mvn -Dtest=ProjectOptionsTest test
 ```
 
@@ -636,7 +636,7 @@ Both scripts verify Java feature version 21 or newer, launch the shaded JAR, and
 Run:
 
 ```powershell
-$env:JAVA_HOME='E:\A\jdk-jre\jdk21'
+$env:JAVA_HOME='/path/jdk-21'
 mvn clean verify
 ```
 
@@ -668,7 +668,7 @@ git commit -m "test: verify Java code intelligence MCP end to end"
 Run with JDK 21:
 
 ```powershell
-$env:JAVA_HOME='E:\A\jdk-jre\jdk21'
+$env:JAVA_HOME='/path/jdk-21'
 mvn clean verify
 ```
 

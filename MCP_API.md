@@ -9,10 +9,14 @@
 | 传输方式 | stdio |
 | 服务运行时 | JDK 21 |
 | 默认分析目标 | Java 8 项目 |
-| 默认变化检测 | `none` |
+| 默认变化检测 | `NONE` |
 | 接口风格 | MCP Tools + 结构化 JSON |
 
 本接口文档定义 MCP 业务工具层的输入、输出和错误语义。JSON-RPC 编解码、传输管理和协议版本协商由官方 MCP Java SDK 负责。
+
+文档示例中的 `/path/...` 均为脱敏虚拟路径，实际调用时请替换为目标机器上的路径。
+
+如果你是负责实际调用服务的 AI Agent，请先阅读 [AI Agent 配置与调用指南](AI_AGENT_GUIDE.md)；本文档更适合实现 MCP Client 或核对协议细节。
 
 参考实现：[MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk)。
 
@@ -38,7 +42,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service"
+  "projectPath": "/path/projects/order-service"
 }
 ```
 
@@ -55,7 +59,8 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 | 参数 | 默认值 |
 |---|---|
 | `targetJavaRelease` | `8` |
-| `changeDetection` | `none` |
+| `enforceTargetRelease` | `false` |
+| `changeDetection` | `NONE` |
 | `force` | `false` |
 | `includeTestDependencies` | `false` |
 | 查询 `limit` | 50 |
@@ -71,6 +76,21 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 - 反编译源码默认最大返回 2 MB；
 - 超过源码大小时返回完整缓存路径和截断提示；
 - 工具不会因为结果过多而自动把所有数据拼接到文本字段中。
+
+### 2.5 Maven 运行环境
+
+`index_project` 不接受 Maven 可执行文件路径作为请求参数。服务默认执行 PATH 中的 Maven（Windows 为 `mvn.cmd`，其他系统为 `mvn`），并继承 Maven 的 POM、用户 `settings.xml` 和本地仓库配置。启动服务时可以使用以下环境变量或 Java 系统属性覆盖：
+
+| 配置 | 环境变量 | Java 系统属性 | 默认值 |
+|---|---|---|---|
+| Maven 可执行文件 | `JCI_MAVEN_COMMAND` | `jci.maven.command` | Windows 为 `mvn.cmd`，其他系统为 `mvn`（若设置 `MAVEN_HOME` 则使用其 `bin/mvn[.cmd]`） |
+| Maven 超时 | `JCI_MAVEN_TIMEOUT_SECONDS` | `jci.maven.timeoutSeconds` | `120` 秒 |
+
+系统属性优先于环境变量。Maven 路径和超时属于服务级配置，不会写入索引数据库；`includeTestDependencies` 仍是 `index_project` 的请求级选项。
+
+多 Module 根 POM 不要求先执行 `compile`、`package` 或 `install`。服务先读取 `help:effective-pom`，识别 Reactor 内部坐标，再为每个 Module 在系统临时目录生成移除内部依赖的 probe POM，并调用 `dependency:build-classpath` 解析第三方 JAR。目标项目目录不会写入 probe POM、classpath 文件或构建产物。
+
+如果本机 Maven 无法解析插件、外部仓库或认证镜像，工具会返回模块级 `diagnostics`；有可用 classpath 的模块会保留部分结果。服务不会把 `target/` 下已有文件注册为 Maven artifact，也不会替用户执行目标项目的构建生命周期。
 
 ## 3. MCP 生命周期
 
@@ -135,7 +155,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
   "params": {
     "name": "get_class",
     "arguments": {
-      "projectPath": "E:/work/order-service",
+      "projectPath": "/path/projects/order-service",
       "className": "com.example.order.OrderDTO"
     }
   }
@@ -168,7 +188,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service"
+  "projectPath": "/path/projects/order-service"
 }
 ```
 
@@ -182,7 +202,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
   "version": "1.1.0",
   "classifier": null,
   "fileName": "order-api-1.1.0.jar",
-  "path": "C:/Users/dev/.m2/repository/com/example/order-api/1.1.0/order-api-1.1.0.jar"
+  "path": "/path/.m2/repository/com/example/order-api/1.1.0/order-api-1.1.0.jar"
 }
 ```
 
@@ -318,9 +338,9 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "force": false,
-  "changeDetection": "none",
+  "changeDetection": "NONE",
   "targetJavaRelease": 8,
   "enforceTargetRelease": false,
   "includeTestDependencies": false
@@ -331,7 +351,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 |---|---|---:|---:|---|
 | `projectPath` | string | 是 | - | Maven 项目目录 |
 | `force` | boolean | 否 | false | 忽略现有索引并重建 |
-| `changeDetection` | enum | 否 | none | none / metadata / sha256 |
+| `changeDetection` | enum | 否 | NONE | NONE / METADATA / SHA256（大小写不敏感） |
 | `targetJavaRelease` | integer | 否 | 8 | 目标 Java 版本 |
 | `enforceTargetRelease` | boolean | 否 | false | 是否跳过更高版本 class |
 | `includeTestDependencies` | boolean | 否 | false | 是否包含 test 依赖 |
@@ -342,10 +362,10 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 {
   "status": "indexed",
   "project": {
-    "projectPath": "E:/work/order-service",
+    "projectPath": "/path/projects/order-service",
     "projectId": "project-9c1f",
     "targetJavaRelease": 8,
-    "changeDetection": "none"
+    "changeDetection": "NONE"
   },
   "summary": {
     "modules": 3,
@@ -357,12 +377,15 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
     "fields": 31200,
     "calls": 248000,
     "errors": 2,
-    "elapsedMs": 18400
+    "elapsedMs": 18400,
+    "diagnostics": []
   },
   "diagnostics": [],
   "text": "项目索引完成：3 个 Module，126 个 JAR，新增索引 4 个。"
 }
 ```
+
+`diagnostics` 同时出现在 `summary` 和工具结果的顶层，内容相同，便于 MCP 客户端直接读取。Maven 解析诊断使用 `MAVEN_*` code；有可用 classpath 的模块可以在存在 warning 时继续索引。
 
 `status`：
 
@@ -374,7 +397,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 | `failed` | 项目级索引失败 |
 | `in_progress` | 已有索引任务正在执行 |
 
-当 `changeDetection=none` 时，依赖变化不会自动触发重建，必须使用 `force=true`。
+当 `changeDetection=NONE` 时，依赖变化不会自动触发重建，必须使用 `force=true`。服务同时接受小写写法，但 MCP schema 使用大写枚举作为规范形式。
 
 ## 6.2 get_index_status
 
@@ -384,7 +407,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service"
+  "projectPath": "/path/projects/order-service"
 }
 ```
 
@@ -392,13 +415,13 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "projectId": "project-9c1f",
   "exists": true,
   "status": "ready",
   "lastIndexedAt": "2026-09-11T10:30:00+08:00",
   "targetJavaRelease": 8,
-  "changeDetection": "none",
+  "changeDetection": "NONE",
   "summary": {
     "modules": 3,
     "jars": 126,
@@ -408,13 +431,13 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
     "calls": 248000,
     "errors": 2
   },
-  "databasePath": "C:/Users/dev/.java-code-intelligence/project-9c1f/index.db",
+  "databasePath": "/path/.java-code-intelligence/project-9c1f/index.db",
   "rebuildRequired": false,
   "text": "索引已就绪。"
 }
 ```
 
-`rebuildRequired` 只表示服务已明确知道需要重建，例如配置版本发生变化；`changeDetection=none` 不主动计算 JAR 内容变化。
+`rebuildRequired` 只表示服务已明确知道需要重建，例如配置版本发生变化；`changeDetection=NONE` 不主动计算 JAR 内容变化。
 
 ## 6.3 search_classes
 
@@ -424,7 +447,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "query": "OrderDTO",
   "packagePrefix": "com.example",
   "kind": "class",
@@ -475,7 +498,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "className": "com.example.order.OrderDTO",
   "includeMembers": true,
   "includeAnnotations": true
@@ -520,7 +543,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "owner": "com.example.PaymentService",
   "method": "pay",
   "descriptor": "(Lcom/example/Payment;)V",
@@ -577,7 +600,7 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "owner": "com.example.order.OrderDTO",
   "fieldName": "status",
   "includeAccessors": true
@@ -623,7 +646,7 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "typeName": "com.example.order.BaseOrder",
   "recursive": true,
   "includeInterfaces": true,
@@ -665,7 +688,7 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "owner": "com.example.PaymentRepository",
   "method": "save",
   "descriptor": "(Lcom/example/Payment;)V",
@@ -727,7 +750,7 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 
 ```json
 {
-  "projectPath": "E:/work/order-service",
+  "projectPath": "/path/projects/order-service",
   "className": "com.example.order.OrderDTO",
   "targetJavaRelease": 8,
   "force": false,
@@ -749,7 +772,7 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
   "className": "com.example.order.OrderDTO",
   "source": "package com.example.order;\\n\\npublic class OrderDTO { ... }",
   "cached": true,
-  "sourcePath": "C:/Users/dev/.java-code-intelligence/project-9c1f/decompiled/com/example/order/OrderDTO.java",
+  "sourcePath": "/path/.java-code-intelligence/project-9c1f/decompiled/com/example/order/OrderDTO.java",
   "jar": {
     "fileName": "order-api-1.1.0.jar",
     "version": "1.1.0"
@@ -809,6 +832,8 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 | `IO_ERROR` | 文件或数据库读写失败 | 是 |
 | `INTERNAL_ERROR` | 未分类服务错误 | 视情况 |
 
+`MAVEN_EFFECTIVE_POM_PARTIAL`、`MAVEN_MODULE_RESOLUTION_FAILED`、`MAVEN_PARTIAL_RESOLUTION` 和 `CLASS_VERSION_EXCLUDED` 是 `index_project` 返回的 `diagnostics[].code`，用于表达 Maven 的整体警告、单模块失败、可恢复的部分 classpath 以及严格 Java 版本过滤；它们不替代 MCP 协议级错误。
+
 ### 7.3 MCP 错误与工具错误
 
 协议级错误由 MCP SDK 处理。业务错误通过工具结果返回，并设置工具结果的错误状态。客户端必须同时检查：
@@ -863,7 +888,7 @@ failed
       "command": "java",
       "args": [
         "-jar",
-        "E:/tools/java-code-intelligence/java-code-intelligence.jar"
+        "/path/tools/java-code-intelligence/java-code-intelligence.jar"
       ]
     }
   }
@@ -878,9 +903,9 @@ failed
     "java-code-intelligence": {
       "command": "java",
       "args": [
-        "-Djava-code-intelligence.cache-root=E:/java-code-intelligence-cache",
+        "-Djava-code-intelligence.cache-root=/path/java-code-intelligence-cache",
         "-jar",
-        "E:/tools/java-code-intelligence/java-code-intelligence.jar"
+        "/path/tools/java-code-intelligence/java-code-intelligence.jar"
       ]
     }
   }
@@ -915,7 +940,7 @@ failed
 - 所有必填参数缺失时返回 `INVALID_ARGUMENT`；
 - 项目不存在时返回 `PROJECT_NOT_FOUND`；
 - 首次 `index_project` 可以建立 SQLite 索引；
-- 默认 `changeDetection=none` 不计算 JAR SHA-256；
+- 默认 `changeDetection=NONE` 不计算 JAR SHA-256；
 - `force=true` 可以触发重建；
 - 默认 `targetJavaRelease=8`；
 - 可以为请求指定 Java 11、17 或 21；
