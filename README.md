@@ -10,7 +10,7 @@
 - `NONE`（默认）、`METADATA`、`SHA256` 三种可选变更检测模式；默认不计算 JAR 指纹
 - 类、方法、字段、子类型、调用方查询及分页
 - Vineflower 1.12.0 按需反编译和源码缓存
-- MCP stdio 九个工具
+- MCP stdio 十一个工具
 
 ## 构建
 
@@ -110,3 +110,4 @@ $env:JCI_MAVEN_COMMAND = '/path/maven/bin/mvn.cmd'
 ## 重要边界
 
 服务不会加载被分析的 class，也不会执行静态初始化；调用图是静态字节码近似结果，不覆盖反射、Spring AOP 和运行时代理。详细工具输入输出见 [MCP_API.md](MCP_API.md)，设计和验收范围见 [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)。
+For large call graphs, use `get_method_overview` first. It returns bounded relation counts and representative evidence; use the paged `find_callees` tool with a descriptor and category filter to expand only the targets relevant to the current question. Repeated targets are grouped by default, while `groupBy="callSite"` exposes individual static call edges.

@@ -58,6 +58,9 @@ class SqliteIndexStoreTest {
                     .isEqualTo(List.of("java.io.IOException"));
             assertThat(store.findCallers("java.lang.Object", "toString", "()Ljava/lang/String;", false, 10, 0))
                     .singleElement().extracting(CallEdge::callerOwner).isEqualTo(classInfo.name());
+            assertThat(store.findCallees(classInfo.name(), "getId", "()Ljava/lang/Long;", 1, 0))
+                    .singleElement().extracting(CallEdge::targetOwner).isEqualTo("java.lang.Object");
+            assertThat(store.countCallees(classInfo.name(), "getId", "()Ljava/lang/Long;")).isEqualTo(1);
 
             DecompileCacheKey key = new DecompileCacheKey("com.example:order-api:1.0", "com/example/OrderDTO.class", 8, "vf-1");
             DecompiledSource source = new DecompiledSource(classInfo.name(), "class OrderDTO {}", false, null, "vf-1");

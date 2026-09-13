@@ -177,9 +177,11 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 | `search_classes` | 按类名或包名搜索类 | 否 |
 | `get_class` | 获取完整类结构 | 否 |
 | `get_method` | 获取方法签名和关系 | 否 |
+| `get_method_overview` | 获取有界的调用关系统计和代表性证据 | 否 |
 | `get_field` | 获取字段、类型和注解 | 否 |
 | `find_subtypes` | 查询继承和实现关系 | 否 |
 | `find_callers` | 查询静态字节码调用方 | 否 |
+| `find_callees` | 按类别、包名或方法名分页查询被调用方 | 否 |
 | `decompile_class` | 按需反编译并缓存源码 | 可能写入缓存 |
 
 ## 5. 公共数据类型
@@ -562,6 +564,8 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
 
 未提供 descriptor 时返回全部重载方法。
 
+当 `includeCallees=true` 时，`get_method` 会返回原始静态调用边，调用边很多时结果可能很大。对于调用关系分析，推荐先调用 `get_method_overview` 获取有界摘要，再用 `find_callees` 按类别和分页展开；这样仍保留 `get_method` 的向后兼容行为，同时避免一次传输整个调用图。
+
 ### 返回
 
 ```json
@@ -591,6 +595,156 @@ HTTP、SSE 和 Streamable HTTP 不属于第一阶段接口承诺。
   "text": "找到 1 个方法：PaymentService.pay(Payment): void"
 }
 ```
+
+## 6.5a get_method_overview
+
+获取一个方法或全部重载的有界调用关系概览。该接口只返回计数、少量调用方示例和代表性被调用方，不返回完整 callee 列表。
+
+### 输入
+
+```json
+{
+  "projectPath": "/path/projects/order-service",
+  "owner": "com.example.PaymentService",
+  "method": "pay",
+  "descriptor": "(Lcom/example/Payment;)V",
+  "includeCallers": true,
+  "representativeLimit": 5
+}
+```
+
+| 字段 | 类型 | 必填 | 默认值 |
+|---|---|---:|---:|
+| `projectPath` | string | 是 | - |
+| `owner` | string | 是 | - |
+| `method` | string | 是 | - |
+| `descriptor` | string | 否 | null，返回全部重载 |
+| `includeCallers` | boolean | 否 | true |
+| `representativeLimit` | integer | 否 | 5，范围 1-50 |
+
+### 返回
+
+```json
+{
+  "owner": "com.example.PaymentService",
+  "method": "pay",
+  "items": [
+    {
+      "method": {
+        "owner": "com.example.PaymentService",
+        "name": "pay",
+        "descriptor": "(Lcom/example/Payment;)V",
+        "parameters": [],
+        "returnType": "void",
+        "access": ["public"],
+        "annotations": []
+      },
+      "callerCount": 2,
+      "callerExamples": [],
+      "calleeCallSiteCount": 4,
+      "uniqueCalleeCount": 3,
+      "categoryCounts": [
+        { "category": "DATA_ACCESS", "count": 1 },
+        { "category": "BUSINESS", "count": 2 },
+        { "category": "FRAMEWORK_OR_UTILITY", "count": 1 }
+      ],
+      "representativeCallees": [
+        {
+          "edge": {
+            "callerOwner": "com.example.PaymentService",
+            "callerName": "pay",
+            "callerDescriptor": "(Lcom/example/Payment;)V",
+            "targetOwner": "com.example.PaymentRepository",
+            "targetName": "save",
+            "targetDescriptor": "(Lcom/example/Payment;)V",
+            "resolutionKind": "DIRECT"
+          },
+          "category": "DATA_ACCESS",
+          "callSiteCount": 1,
+          "reason": "Mapper/Repository or SQL-like target"
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "text": "Overview for 1 method overload(s); use find_callees to expand targets"
+}
+```
+
+`categoryCounts` 和 `representativeCallees` 使用确定性的启发式分类，仅用于导航和筛选，不替代完整的类型或数据流分析。`warnings` 会提示未解析调用或无法分类的调用边。
+
+## 6.5b find_callees
+
+分页查询指定方法的 outgoing call edges。默认按目标方法合并重复调用点，并在 `callSiteCount` 中报告合并数量；需要逐条静态调用边时将 `groupBy` 设置为 `callSite`。
+
+### 输入
+
+```json
+{
+  "projectPath": "/path/projects/order-service",
+  "owner": "com.example.PaymentService",
+  "method": "pay",
+  "descriptor": "(Lcom/example/Payment;)V",
+  "category": "data_access",
+  "packagePrefix": "com.example.payment",
+  "nameQuery": "save",
+  "groupBy": "target",
+  "limit": 50,
+  "offset": 0
+}
+```
+
+| 字段 | 类型 | 必填 | 默认值 |
+|---|---|---:|---:|
+| `projectPath` | string | 是 | - |
+| `owner` | string | 是 | - |
+| `method` | string | 是 | - |
+| `descriptor` | string | 是 | - |
+| `category` | string | 否 | `all` |
+| `packagePrefix` | string | 否 | 不筛选目标包 |
+| `nameQuery` | string | 否 | 不筛选目标 owner/name |
+| `groupBy` | string | 否 | `target` |
+| `limit` | integer | 否 | 50，最大 500 |
+| `offset` | integer | 否 | 0 |
+
+`category` 可选值为 `all`、`business`、`data_access`、`bom_expansion`、`export_or_batch`、`framework_or_utility`、`unknown`；`groupBy` 可选 `target` 或 `callSite`。
+
+### 返回
+
+```json
+{
+  "owner": "com.example.PaymentService",
+  "method": "pay",
+  "descriptor": "(Lcom/example/Payment;)V",
+  "items": [
+    {
+      "edge": {
+        "callerOwner": "com.example.PaymentService",
+        "callerName": "pay",
+        "callerDescriptor": "(Lcom/example/Payment;)V",
+        "targetOwner": "com.example.PaymentRepository",
+        "targetName": "save",
+        "targetDescriptor": "(Lcom/example/Payment;)V",
+        "resolutionKind": "DIRECT"
+      },
+      "category": "DATA_ACCESS",
+      "callSiteCount": 2,
+      "reason": "Mapper/Repository or SQL-like target"
+    }
+  ],
+  "page": {
+    "limit": 50,
+    "offset": 0,
+    "returned": 1,
+    "total": 1,
+    "truncated": false,
+    "nextOffset": null
+  },
+  "text": "Found 1 callee targets"
+}
+```
+
+`page.total` 是当前筛选和分组方式下的总数。外层适配器如果因响应过大生成 `fullResultPath`，该文件可作为原始结果兜底；正常使用时优先通过 `limit`、`offset`、`category`、`packagePrefix` 和 `nameQuery` 分页读取。
 
 ## 6.6 get_field
 
@@ -702,7 +856,7 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 |---|---|---:|---:|---|
 | `owner` | string | 是 | - | 目标方法所属类 |
 | `method` | string | 是 | - | 目标方法名 |
-| `descriptor` | string | 否 | null | JVM 方法 descriptor |
+| `descriptor` | string | 是 | - | JVM 方法 descriptor；当前实现强制要求 |
 | `matchMode` | enum | 否 | exact | exact / polymorphic |
 
 `exact` 只返回目标 owner、name 和 descriptor 完全匹配的调用边。`polymorphic` 可以根据已知继承关系返回可能的多态候选，并在每条结果中标明 `POLYMORPHIC_CANDIDATE`。
@@ -713,25 +867,28 @@ Getter/Setter 是根据命名和 descriptor 推导的可能关系，不保证一
 {
   "items": [
     {
-      "caller": {
-        "owner": "com.example.PaymentService",
-        "name": "pay",
-        "descriptor": "(Lcom/example/Payment;)V"
-      },
-      "target": {
-        "owner": "com.example.PaymentRepository",
-        "name": "save",
-        "descriptor": "(Lcom/example/Payment;)V"
-      },
+      "callerOwner": "com.example.PaymentService",
+      "callerName": "pay",
+      "callerDescriptor": "(Lcom/example/Payment;)V",
+      "targetOwner": "com.example.PaymentRepository",
+      "targetName": "save",
+      "targetDescriptor": "(Lcom/example/Payment;)V",
       "opcode": "invokeinterface",
       "resolutionKind": "DIRECT",
-      "sourceJar": "payment-service-1.0.0.jar"
+      "sourceJar": {
+        "path": "/path/.m2/repository/com/example/payment-service/1.0.0/payment-service-1.0.0.jar",
+        "coordinate": {
+          "groupId": "com.example",
+          "artifactId": "payment-service",
+          "version": "1.0.0",
+          "classifier": null
+        }
+      }
     }
   ],
   "page": {
     "limit": 100,
     "offset": 0,
-    "returned": 1,
     "total": 1,
     "truncated": false,
     "nextOffset": null
@@ -936,7 +1093,7 @@ failed
 ## 12. 第一阶段接口验收
 
 - 客户端可以完成 initialize 和 tools/list；
-- 9 个工具都能被发现；
+- 11 个工具都能被发现；
 - 所有必填参数缺失时返回 `INVALID_ARGUMENT`；
 - 项目不存在时返回 `PROJECT_NOT_FOUND`；
 - 首次 `index_project` 可以建立 SQLite 索引；
@@ -944,7 +1101,7 @@ failed
 - `force=true` 可以触发重建；
 - 默认 `targetJavaRelease=8`；
 - 可以为请求指定 Java 11、17 或 21；
-- `get_class`、`get_method`、`get_field`、`find_subtypes`、`find_callers` 返回结构化结果；
+- `get_class`、`get_method`、`get_method_overview`、`get_field`、`find_subtypes`、`find_callers`、`find_callees` 返回结构化结果；
 - `decompile_class` 首次生成源码、二次调用命中缓存；
 - 列表结果具有 limit、offset 和 truncated；
 - 业务错误具有稳定错误码；
@@ -956,3 +1113,22 @@ failed
 本文件定义 MCP 调用层协议。总体架构、SQLite 详细设计、编码阶段拆分和非目标范围见：
 
 [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+
+## 14. 调用关系渐进式读取
+
+推荐按需逐层展开调用图：
+
+```text
+get_method
+  -> 确认目标重载的 descriptor
+get_method_overview
+  -> 查看调用方/被调用方计数、类别、代表性证据和 warnings
+find_callees
+  -> 只展开当前问题相关的类别、包名或方法名，并使用 limit/offset 分页
+decompile_class
+  -> 仅对选中的类查看反编译源码
+```
+
+`get_method_overview` 始终有界，不包含完整 callee 列表；`categoryCounts` 和 `representativeCallees` 是确定性的导航提示。`find_callees` 必须提供 descriptor，默认按目标方法合并重复调用点，并返回 `page.total`、`page.truncated` 和 `page.nextOffset`。
+
+外层适配器如果因响应过大生成 `fullResultPath`，该文件是原始结果兜底，不是正常分页流程的前置条件。优先使用 `get_method_overview` 和 `find_callees`，只有在需要逐条调用点或完整原始数据时才读取大结果文件。

@@ -4,7 +4,7 @@
 
 1. 启动并配置 Java Code Intelligence MCP；
 2. 判断何时建立或刷新项目索引；
-3. 正确调用当前版本暴露的 9 个 tools；
+3. 正确调用当前版本暴露的 11 个 tools；
 4. 解释分页、缓存、Maven 诊断和反编译结果。
 
 请求/响应字段的完整协议说明见 [MCP_API.md](MCP_API.md)；本文档优先说明 Agent 何时调用、如何配置以及当前实现的行为边界。
@@ -132,7 +132,7 @@ root pom.xml
 
 目标项目的内部 Module 不需要已经有 `target/*.jar`，也不需要安装到本地 Maven 仓库。服务不会对目标项目执行 `compile`、`package`、`install` 或测试生命周期。Maven 插件、外部仓库或认证不可用时，结果会带有 `MAVEN_*` 诊断。
 
-## 3. 当前暴露的 9 个 tools
+## 3. 当前暴露的 11 个 tools
 
 | tool | 用途 | 是否建立/修改索引 |
 |---|---|---|
@@ -141,9 +141,11 @@ root pom.xml
 | `search_classes` | 按类名或全限定名搜索类 | 否 |
 | `get_class` | 获取类结构、字段和方法 | 否 |
 | `get_method` | 查询方法签名，可附带调用方/被调用方 | 否 |
+| `get_method_overview` | 返回有界的调用统计、类别和关键证据节点 | 否 |
 | `get_field` | 查询字段、注解和 Getter/Setter | 否 |
 | `find_subtypes` | 查询继承和接口实现关系 | 否 |
 | `find_callers` | 查询静态字节码调用方 | 否 |
+| `find_callees` | 按页、类别或包名展开被调用目标 | 否 |
 | `decompile_class` | 按需反编译 class 并缓存源码 | 可能写入反编译缓存 |
 
 所有 tool 都通过 `projectPath` 选择项目。除表中列出的参数外不要传其他字段。
@@ -315,7 +317,37 @@ root pom.xml
 
 建议：方法重载较多时先不传 `descriptor`，根据返回的 `descriptor` 再精确查询。
 
-### 3.6 `get_field`
+### 3.6 `get_method_overview`
+
+`get_method_overview` is the preferred first step for understanding a method's call graph. It returns method metadata, relation counts, deterministic navigation categories, a small set of representative targets, and static-analysis warnings. It does not return the complete callee list.
+
+Use `descriptor` when the method is overloaded. `representativeLimit` is capped at 50 and defaults to 5. `includeCallers` defaults to true.
+
+```json
+{
+  "projectPath": "/path/projects/order-service",
+  "owner": "com.example.PaymentService",
+  "method": "pay",
+  "descriptor": "(Lcom/example/Payment;)V",
+  "representativeLimit": 5
+}
+```
+
+The overview exposes `calleeCallSiteCount`, `uniqueCalleeCount`, `categoryCounts`, `representativeCallees`, and `warnings`. Categories are heuristic navigation hints; `resolutionKind` and the warning explain the limits of static bytecode analysis.
+
+### 3.7 `find_callees`
+
+`find_callees` expands one method's outgoing relations. `descriptor` is required. Results are grouped by target method by default, so repeated bytecode call sites include a `callSiteCount` instead of repeated rows. Set `groupBy="callSite"` when individual bytecode edges are needed.
+
+Supported `category` values are `all`, `business`, `data_access`, `bom_expansion`, `export_or_batch`, `framework_or_utility`, and `unknown`. Use `limit` and `offset` with `page.nextOffset` for pagination. `packagePrefix` and `nameQuery` filter targets before the response is built.
+
+```text
+get_method_overview(owner, method, descriptor)
+  -> find_callees(category="data_access", limit=50)
+  -> find_callees(category="export_or_batch", limit=50)
+```
+
+### 3.8 `get_field`
 
 查看字段类型、访问标志、注解以及推断出的 Getter/Setter。
 
@@ -330,7 +362,7 @@ root pom.xml
 
 Getter/Setter 是静态命名约定推断，不代表运行时一定被调用。
 
-### 3.7 `find_subtypes`
+### 3.9 `find_subtypes`
 
 查询某个类的子类，或某个接口的实现类。
 
@@ -343,7 +375,7 @@ Getter/Setter 是静态命名约定推断，不代表运行时一定被调用。
 | `limit` | 否 | `50` | 结果分页 |
 | `offset` | 否 | `0` | 结果分页 |
 
-### 3.8 `find_callers`
+### 3.10 `find_callers`
 
 查询谁在字节码中调用某个方法。
 
@@ -396,8 +428,9 @@ amespace，但不建立方法级关系。Agent 不应为读取这些资源自行
 3. 检查 summary.diagnostics
 4. search_classes(query)
 5. get_class(className, includeMembers=true)
-6. 对关键方法调用 get_method(..., includeCallers=true, includeCallees=true)
-7. 需要源码时调用 decompile_class
+6. 对关键方法先调用 get_method_overview
+7. 按类别调用 find_callees 展开关键目标
+8. 需要源码时只对已确认的关键类调用 decompile_class
 ```
 
 ### 4.2 用户说“查询 OrderDTO”
